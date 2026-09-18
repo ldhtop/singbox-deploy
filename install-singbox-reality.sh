@@ -8,17 +8,18 @@ umask 077
 #
 # Safe defaults:
 #   PORT=28443
-#   SNI=www.microsoft.com
+#   SNI=www.cloudflare.com
 #   CLIENT_NAME=SG-Reality
 #
 # First install examples:
 #   sudo bash install-singbox-reality.sh
-#   sudo PORT=28443 SNI=www.microsoft.com CLIENT_NAME=Andy-SG bash install-singbox-reality.sh
+#   sudo PORT=28443 SNI=www.cloudflare.com CLIENT_NAME=Andy-SG bash install-singbox-reality.sh
 #
 # Management:
 #   sudo bash install-singbox-reality.sh --show
 #   sudo bash install-singbox-reality.sh --status
 #   sudo bash install-singbox-reality.sh --rotate
+#   sudo bash install-singbox-reality.sh --set-sni www.cloudflare.com
 #   sudo bash install-singbox-reality.sh --uninstall
 
 STATE_FILE="/etc/sing-box/reality.env"
@@ -28,7 +29,7 @@ APT_KEY="/etc/apt/keyrings/sagernet.asc"
 APT_SOURCE="/etc/apt/sources.list.d/sagernet.sources"
 
 DEFAULT_PORT="28443"
-DEFAULT_SNI="www.microsoft.com"
+DEFAULT_SNI="www.cloudflare.com"
 DEFAULT_CLIENT_NAME="SG-Reality"
 
 log()  { printf '\033[1;32m[+]\033[0m %s\n' "$*"; }
@@ -46,7 +47,7 @@ validate_port() {
 
 validate_sni() {
   [[ "$1" =~ ^[A-Za-z0-9.-]+$ ]] || die "SNI 格式不正确。"
-  [[ "$1" == *.* ]] || die "SNI 应为可访问的域名，例如 www.microsoft.com。"
+  [[ "$1" == *.* ]] || die "SNI 应为可访问的域名，例如 www.cloudflare.com。"
 }
 
 load_state() {
@@ -118,6 +119,7 @@ generate_credentials() {
 
   [[ -n "$PRIVATE_KEY" && -n "$PUBLIC_KEY" ]] || die "Reality 密钥生成失败。输出：$keypair"
 
+  # sing-box Reality short_id: 0-8 hexadecimal digits. Generate exactly 8.
   SHORT_ID="$(openssl rand -hex 4)"
 }
 
@@ -204,6 +206,7 @@ get_server_addr() {
 }
 
 urlencode_name() {
+  # Good enough for common ASCII node names; replace spaces with %20.
   printf '%s' "$1" | sed 's/ /%20/g'
 }
 
@@ -256,6 +259,19 @@ status() {
     printf '\n--- listen port ---\n'
     ss -lntp 2>/dev/null | grep -E ":${PORT}([[:space:]]|$)" || true
   fi
+}
+
+set_sni() {
+  local new_sni="${1:-}"
+  [[ -n "$new_sni" ]] || die "用法：--set-sni DOMAIN，例如 --set-sni www.cloudflare.com"
+  load_state || die "尚未安装或状态文件不存在：$STATE_FILE"
+  validate_sni "$new_sni"
+  SNI="$new_sni"
+  save_state
+  write_config
+  start_service
+  show_client
+  warn "SNI/Reality handshake 目标已更新；请重新导入上面生成的新链接。"
 }
 
 rotate() {
@@ -328,6 +344,9 @@ case "${1:-}" in
     ;;
   --rotate)
     rotate
+    ;;
+  --set-sni)
+    set_sni "${2:-}"
     ;;
   --uninstall)
     uninstall_node
