@@ -27,7 +27,7 @@ require_root() {
 
 random_port() {
   local p
-  for _ in $(seq 1 30); do
+  for _ in $(seq 1 50); do
     p=$((20000 + RANDOM % 40000))
     if ! ss -lnt 2>/dev/null | awk '{print $4}' | grep -Eq "[:.]${p}$"; then
       printf '%s' "$p"
@@ -252,13 +252,31 @@ rotate() {
 
 rebuild() {
   install_sing_box
+
   local old_port=""
+  local keep_sni="$DEFAULT_SNI"
+  local keep_client_name="$DEFAULT_CLIENT_NAME"
+
   if load_state 2>/dev/null; then
     old_port="$PORT"
+    keep_sni="$SNI"
+    keep_client_name="$CLIENT_NAME"
   fi
-  PORT="${PORT:-$(random_port)}"
-  SNI="${SNI:-$DEFAULT_SNI}"
-  CLIENT_NAME="${CLIENT_NAME:-$DEFAULT_CLIENT_NAME}"
+
+  # Rebuild must ALWAYS choose a new random port. Do not reuse PORT loaded from state.
+  local new_port
+  new_port="$(random_port)"
+  if [[ -n "$old_port" ]]; then
+    for _ in $(seq 1 20); do
+      [[ "$new_port" != "$old_port" ]] && break
+      new_port="$(random_port)"
+    done
+  fi
+
+  PORT="$new_port"
+  SNI="$keep_sni"
+  CLIENT_NAME="$keep_client_name"
+
   validate_port "$PORT"
   validate_sni "$SNI"
   generate_credentials
@@ -267,8 +285,10 @@ rebuild() {
   open_ufw_if_active
   start_service
   show_client
+
   if [[ -n "$old_port" && "$old_port" != "$PORT" ]]; then
-    warn "旧端口 ${old_port}/TCP 已不再使用。请从 AWS Lightsail 防火墙删除旧端口，并开放新端口 ${PORT}/TCP。"
+    warn "端口已从 ${old_port}/TCP 更换为 ${PORT}/TCP。"
+    warn "请在 AWS Lightsail 防火墙开放新端口 ${PORT}/TCP，并删除旧端口 ${old_port}/TCP。"
   else
     warn "请在 AWS Lightsail 防火墙开放 TCP ${PORT}。"
   fi
