@@ -34,7 +34,6 @@ exec sudo /usr/local/lib/singbox-deploy/singbox-menu.sh "$@"
 EOF
 chmod 0755 /usr/local/bin/sbmenu
 
-# Install the short command `menu` only if it is unused or already belongs to us.
 if [[ ! -e /usr/local/bin/menu ]] || grep -q 'singbox-deploy' /usr/local/bin/menu 2>/dev/null; then
   cat > /usr/local/bin/menu <<'EOF'
 #!/usr/bin/env bash
@@ -48,8 +47,12 @@ else
   printf '[!] /usr/local/bin/menu 已存在且不是本项目文件，为避免覆盖，未修改它。\n'
 fi
 
-printf '\n[+] 管理菜单安装完成。\n'
+printf '\n[+] 管理菜单安装/更新完成。\n'
 printf '[+] 可执行命令：sbmenu\n'
-printf '[+] 快捷命令：%s\n\n' "$MENU_CMD"
+printf '[+] 快捷命令：%s\n' "$MENU_CMD"
+printf '[+] 现在请在当前 SSH 提示符输入：%s\n\n' "$MENU_CMD"
 
-exec /usr/local/lib/singbox-deploy/singbox-menu.sh
+# Important: do not auto-enter the menu here. This installer is commonly run via
+# `curl ... | sudo bash`; stdin is then the curl pipe rather than the terminal.
+# Auto-entering would make menu reads hit EOF and immediately return to shell.
+exit 0
